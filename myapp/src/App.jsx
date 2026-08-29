@@ -2,8 +2,6 @@ import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
-import Galaxy from './Galaxy'
-import PaperShatter from './PaperShatter/PaperShatter'
 import './App.css'
 
 function App() {
@@ -11,30 +9,6 @@ function App() {
 
   return (
     <>
-      <div style={{ width: '100%', height: '350px', position: 'relative', borderRadius: '16px', overflow: 'hidden', marginBottom: '20px' }}>
-        <Galaxy 
-          mouseRepulsion={true}
-          mouseInteraction={true}
-          density={1.5}
-          glowIntensity={0.6}
-          saturation={0.0}
-          hueShift={0}
-          transparent={false}
-        />
-      </div>
-
-      <div style={{ width: '100%', height: '350px', position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid #333' }}>
-        <PaperShatter 
-          pieces={300}
-          gravity={0.5}
-          wind={0.2}
-          mouseInteraction={true}
-          paperColor="#F6F2E8"
-          rebuild={true}
-          rebuildDelay={5000}
-          transparent={true}
-        />
-      </div>
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
