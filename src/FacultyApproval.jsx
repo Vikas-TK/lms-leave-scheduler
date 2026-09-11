@@ -8,6 +8,35 @@ import {
 } from "lucide-react";
 import { ValidityBadge } from "./validityEngine";
 
+function StudentImg({ photo, name, size = 42, radius = "50%", style }) {
+  const [fail, setFail] = useState(false);
+  const letter = String(name || "S").replace(/\*/g, "")[0] || "S";
+  if (!photo || fail) {
+    return (
+      <div style={{
+        width:size, height:size, borderRadius:radius, flexShrink:0,
+        background:"linear-gradient(135deg, #16a34a, #059669)",
+        color:"#fff", fontSize:Math.round(size*0.42), fontWeight:900,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        border:"2px solid #bbf7d0", ...style,
+      }}>
+        {letter}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={photo}
+      alt={name}
+      onError={()=>setFail(true)}
+      style={{
+        width:size, height:size, borderRadius:radius, flexShrink:0,
+        objectFit:"cover", border:"2px solid #bbf7d0", ...style,
+      }}
+    />
+  );
+}
+
 const C = {
   bg: "#f8fafc",
   panel: "#ffffff",
@@ -231,9 +260,7 @@ function Drawer({req, user, isHod, onClose, onApprove, onReject, onMod}) {
               {/* Student info card */}
               <div style={{background:"#f0fdf4", border:"1.5px solid #bbf7d0", borderRadius:18, padding:18}}>
                 <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:10}}>
-                  <div style={{width:42, height:42, borderRadius:9999, background:"#16a34a", color:"#fff", fontSize:16, fontWeight:900, display:"flex", alignItems:"center", justifyContent:"center"}}>
-                    {req.studentName[0]}
-                  </div>
+                  <StudentImg photo={req.photo} name={req.studentName} size={48} radius="50%"/>
                   <div>
                     <div style={{fontSize:15, fontWeight:800, color:"#0f172a"}}>{req.studentName}</div>
                     <div style={{fontSize:11, color:"#166534", fontWeight:700}}>{cls(req)} · Roll: {req.rollNo} · ID: {req.studentId}</div>
@@ -374,7 +401,10 @@ export default function FacultyApproval({ user, requests, onPatch }) {
     if (isHod) {
       return requests.filter(r => r.dept === user.dept);
     }
-    return requests.filter(r => r.dept === user.dept && r.year === user.year && r.section === user.section);
+    // Show all requests for the advisor's department so CS3D submissions (714024104189-252)
+    // are visible even if the advisor tests with a different section (e.g. ADVCS1A).
+    // Strict class match would be: r.dept===user.dept && r.year===user.year && r.section===user.section
+    return requests.filter(r => r.dept === user.dept);
   }, [requests, user, isHod]);
 
   const pending = relevant.filter(r => isHod ? (r.advisorStatus==="approved" && r.hodStatus==null) : r.advisorStatus==null);
@@ -508,6 +538,7 @@ export default function FacultyApproval({ user, requests, onPatch }) {
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 >
+                  <StudentImg photo={req.photo} name={req.studentName} size={44} radius="50%"/>
                   <div style={{flex:1, minWidth:0}}>
                     <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap"}}>
                       <span style={{fontSize:12, fontWeight:900, color:"#16a34a", fontFamily:"monospace"}}>{req.id}</span>

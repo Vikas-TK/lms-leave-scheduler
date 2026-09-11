@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import SignIn from "./SignIn";
 import NewApplication from "./NewApplication";
 import FacultyApproval from "./FacultyApproval";
@@ -8,6 +8,7 @@ import ProfileModal from "./ProfileModal";
 import ClearancePass from "./ClearancePass";
 import LetterPreviewModal from "./LetterPreviewModal.jsx";
 import ClickSpark from "./ClickSpark";
+import { STUDENTS } from "./data/students";
 import {
   FileText, CheckCircle2, Clock, XCircle,
   Sparkles, ArrowRight, MessageCircle, ExternalLink,
@@ -40,12 +41,6 @@ const DEPT_KEYS = Object.keys(DEPTS);
 const YEARS = [1,2,3,4];
 const SECTIONS = ["A","B","C"];
 
-const STUDENT_NAMES = [
-  "Arjun Sharma","Priya Nair","Karthik Raj","Divya Menon","Suresh Kumar",
-  "Ananya Pillai","Vikram Singh","Meera Iyer","Rohit Das","Lakshmi Patel",
-  "Aakash Verma","Sneha Reddy","Harish Babu","Pooja Krishnan","Nikhil Gupta",
-  "Kavitha Raj","Dinesh Kumar","Sowmya V","Balaji S","Renu Krishnan",
-];
 const ADV_NAMES = [
   "Dr. Lakshmi Priya","Dr. Rajesh Mohan","Dr. Anita Rao","Dr. Sunil Kumar",
   "Dr. Preethi Nair","Dr. Kiran Babu","Dr. Meena Devi","Dr. Venkat Rao",
@@ -59,20 +54,17 @@ const HOD_NAMES = {
 
 const buildUsers = () => {
   const u = {};
-  let ni = 0, ai = 0;
+  let ai = 0;
+  Object.values(STUDENTS).forEach(s => {
+    u[s.regNo] = {
+      pass: s.pass, role: "student",
+      name: s.name, dept: s.dept, year: s.year,
+      section: s.section, rollNo: s.rollNo, regNo: s.regNo, photo: s.photo,
+    };
+  });
   DEPT_KEYS.forEach(dept => {
     YEARS.forEach(yr => {
-      SECTIONS.forEach((sec, si) => {
-        for (let roll = 1; roll <= 3; roll++) {
-          const globalRoll = si * 3 + roll;
-          const rollStr = String(globalRoll).padStart(3,"0");
-          const uid = `ST${dept}${yr}${sec}${rollStr}`;
-          u[uid] = {
-            pass:"student123", role:"student",
-            name: STUDENT_NAMES[ni++ % STUDENT_NAMES.length],
-            dept, year:yr, rollNo:rollStr, section:sec,
-          };
-        }
+      SECTIONS.forEach(sec => {
         u[`ADV${dept}${yr}${sec}`] = {
           pass:"advisor123", role:"advisor",
           name: ADV_NAMES[ai++ % ADV_NAMES.length],
@@ -86,25 +78,26 @@ const buildUsers = () => {
 };
 const USERS = buildUsers();
 
-// ── Reactive store with pre-seeded demo applications ─────────────────────────
-let OD_DB = [
+// ── Reactive store with pre-seeded demo applications (persisted to localStorage) ──
+const _SEED_DB = [
   {
     id: "OD-001",
-    studentId: "STCS1A001",
-    studentName: "Arjun Sharma",
+    studentId: "714024104200",
+    studentName: "714024104200",
     dept: "CS",
-    year: 1,
-    section: "A",
-    rollNo: "001",
+    year: 3,
+    section: "D",
+    rollNo: "200",
     requestType: "od",
     fromDate: "2026-08-10",
     fromTime: "09:00",
     toDate: "2026-08-12",
     toTime: "18:00",
     reason: "Smart India Hackathon 2026 Grand Finale at MIT World Peace University — Presenting AI Autonomous Traffic System",
-    coApplicants: ["STCS1A002", "STCS1A003"],
+    coApplicants: ["714024104189", "714024104190"],
+    photo: "/students/714024104200.jpg",
     attachmentName: "SIH2026_Selection_Letter.pdf",
-    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of the Department of Computer Science\n\nAnd\n\nDr. Lakshmi Priya\nClass Advisor — CS1A\n\nRespected Faculty Members,\n\nSubject: Requisition for On-Duty (OD) Permission — Smart India Hackathon 2026\n\nI am writing to formally request On-Duty (OD) permission for 3 days from 10 August 2026 to 12 August 2026. Our team has qualified for the Grand Finale of Smart India Hackathon 2026 at MIT.\n\nKindly grant OD attendance for the mentioned duration.\n\nYours faithfully,\nArjun Sharma\nRoll No: 001, CS1A",
+    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of the Department of Computer Science\n\nAnd\n\nProf. Arun M\nClass Advisor — CS3D\n\nRespected Faculty Members,\n\nSubject: Requisition for On-Duty (OD) Permission — Smart India Hackathon 2026\n\nI am writing to formally request On-Duty (OD) permission for 3 days from 10 August 2026 to 12 August 2026. Our team has qualified for the Grand Finale of Smart India Hackathon 2026 at MIT.\n\nKindly grant OD attendance for the mentioned duration.\n\nYours faithfully,\n714024104200\nRoll No: 200, CS3D",
     advisorStatus: "approved",
     advisorAt: "2026-08-08",
     hodStatus: "approved",
@@ -113,21 +106,22 @@ let OD_DB = [
   },
   {
     id: "OD-002",
-    studentId: "STCS1A001",
-    studentName: "Arjun Sharma",
+    studentId: "714024104200",
+    studentName: "714024104200",
     dept: "CS",
-    year: 1,
-    section: "A",
-    rollNo: "001",
+    year: 3,
+    section: "D",
+    rollNo: "200",
     requestType: "gatepass",
     fromDate: "2026-09-02",
     fromTime: "10:00",
     toDate: "2026-09-05",
     toTime: "17:00",
     reason: "Paper presentation on Quantum Computing & Cryptography at IEEE International Conference",
-    coApplicants: ["STCS1A002"],
+    coApplicants: ["714024104189"],
+    photo: "/students/714024104200.jpg",
     attachmentName: "IEEE_Acceptance_Letter.pdf",
-    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of the Department of Computer Science\n\nAnd\n\nDr. Lakshmi Priya\nClass Advisor — CS1A\n\nRespected Sir/Madam,\n\nSubject: Application for Campus Gate Pass Permission\n\nI request Gate Pass clearance from 02 September 2026 to 05 September 2026 to represent our institution at the IEEE International Conference.\n\nThanking you,\nArjun Sharma (STCS1A001)",
+    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of the Department of Computer Science\n\nAnd\n\nProf. Arun M\nClass Advisor — CS3D\n\nRespected Sir/Madam,\n\nSubject: Application for Campus Gate Pass Permission\n\nI request Gate Pass clearance from 02 September 2026 to 05 September 2026 to represent our institution at the IEEE International Conference.\n\nThanking you,\n714024104200 (714024104200)",
     advisorStatus: "approved",
     advisorAt: "2026-08-28",
     hodStatus: "approved",
@@ -136,37 +130,90 @@ let OD_DB = [
   },
   {
     id: "OD-003",
-    studentId: "STCS1A001",
-    studentName: "Arjun Sharma",
+    studentId: "714024104200",
+    studentName: "714024104200",
     dept: "CS",
-    year: 1,
-    section: "A",
-    rollNo: "001",
+    year: 3,
+    section: "D",
+    rollNo: "200",
     requestType: "od",
     fromDate: "2026-09-12",
     fromTime: "09:00",
     toDate: "2026-09-14",
     toTime: "18:00",
     reason: "National Cyber Security Championship 2026 at IIT Bombay — Capture The Flag (CTF) Competition",
-    coApplicants: ["STCS1A003"],
+    coApplicants: ["714024104191"],
+    photo: "/students/714024104200.jpg",
     attachmentName: "IITB_CTF_Invite.pdf",
-    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of Department\n\nAnd\n\nDr. Lakshmi Priya\nClass Advisor — CS1A\n\nSubject: Request for OD Approval for National Cyber Security Championship\n\nI request OD approval from 12 September 2026 to 14 September 2026 for representing our college at IIT Bombay.\n\nSincerely,\nArjun Sharma",
+    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of Department\n\nAnd\n\nProf. Arun M\nClass Advisor — CS3D\n\nSubject: Request for OD Approval for National Cyber Security Championship\n\nI request OD approval from 12 September 2026 to 14 September 2026 for representing our college at IIT Bombay.\n\nSincerely,\n714024104200",
     advisorStatus: null,
     hodStatus: null,
     createdAt: "2026-08-29",
   },
 ];
-let nextId = 4;
+
+// Hydrate from localStorage if a previous session saved requests (so student submissions survive refresh / advisor login)
+let OD_DB;
+try {
+  const saved = typeof localStorage !== "undefined" ? localStorage.getItem("od_requests") : null;
+  OD_DB = saved ? JSON.parse(saved) : _SEED_DB;
+  if (!Array.isArray(OD_DB) || OD_DB.length === 0) OD_DB = _SEED_DB;
+} catch (_) {
+  OD_DB = _SEED_DB;
+}
+// One-time migration: ensure every stored request has a photo for the advisor dashboard
+try {
+  let migrated = false;
+  OD_DB = OD_DB.map(r => {
+    if (!r.photo) {
+      const s = STUDENTS[r.studentId];
+      if (s && s.photo) { migrated = true; return { ...r, photo: s.photo }; }
+      if (/^714024104\d{3}$/.test(r.studentId) && r.studentId !== "714024104198") {
+        migrated = true; return { ...r, photo: `/students/${r.studentId}.jpg` };
+      }
+    }
+    return r;
+  });
+  if (migrated) {
+    try { localStorage.setItem("od_requests", JSON.stringify(OD_DB)); } catch (_) {}
+  }
+} catch (_) {}
+let nextId = (() => {
+  let max = 3;
+  try {
+    for (const r of OD_DB) {
+      const n = parseInt(String(r.id).split("-")[1], 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+  } catch (_) {}
+  return max + 1;
+})();
+
 const _listeners = new Set();
 const _notify = () => _listeners.forEach(fn => fn());
+const _persist = () => {
+  try { localStorage.setItem("od_requests", JSON.stringify(OD_DB)); } catch (_) {}
+  _notify();
+};
+// Keep in-memory store in sync if another tab writes to localStorage
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "od_requests" && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (Array.isArray(parsed)) { OD_DB = parsed; _notify(); }
+      } catch (_) {}
+    }
+  });
+}
 
-const addRequest  = (req) => { OD_DB = [...OD_DB, req]; _notify(); };
-const patchRequest = (id, patch) => { OD_DB = OD_DB.map(r => r.id === id ? {...r,...patch} : r); _notify(); };
+const addRequest  = (req) => { OD_DB = [...OD_DB, req]; _persist(); };
+const patchRequest = (id, patch) => { OD_DB = OD_DB.map(r => r.id === id ? {...r,...patch} : r); _persist(); };
 
 function useOD() {
   const [,tick] = useState(0);
   const cb = useCallback(() => tick(n => n+1), []);
-  useState(() => { _listeners.add(cb); return () => _listeners.delete(cb); });
+  useEffect(() => { _listeners.add(cb); return () => _listeners.delete(cb); }, [cb]);
   return OD_DB;
 }
 
@@ -514,6 +561,10 @@ function StudentDashboard({user, activeTab, onTabChange}) {
       studentId:user.id, studentName:user.name,
       dept:user.dept, year:user.year, section:user.section, rollNo:user.rollNo,
       ...formData,
+      // Keep explicit null (e.g. 714024104198 has no photo) — don't fallback to a 404 file
+      photo: user.photo !== undefined ? user.photo : `/students/${(user.regNo || user.id || "").replace(/\*/g, "")}.jpg`,
+      advisorStatus: null, advisorAt: null,
+      hodStatus: null, hodAt: null,
       createdAt:todayStr(),
     });
     setRenewalTarget(null);

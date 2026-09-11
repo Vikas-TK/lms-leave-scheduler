@@ -3,21 +3,22 @@ import {
   User, Lock, Eye, EyeOff, LogIn,
   Home, Sun, GraduationCap, Building2, AlertCircle, ChevronRight, Sparkles, Info,
 } from "lucide-react";
+import { STUDENTS } from "./data/students";
 
 const ROLES = [
   {
     key: "hosteller", label: "Hosteller", icon: Home,
     color: "#16a34a", light: "#dcfce7", border: "#86efac",
-    userType: "student", placeholder: "e.g. STCS1A001",
-    formatExample: "STCS1A001", formatDesc: "ST + DEPT + YR + SEC + ROLL",
-    password: "student123", hint: "Hosteller Student",
+    userType: "student", placeholder: "e.g. 714024104200",
+    formatExample: "714024104200", formatDesc: "12-digit Register Number",
+    password: "last 4 digits of register", hint: "Hosteller Student",
   },
   {
     key: "dayscholar", label: "Day Scholar", icon: Sun,
     color: "#0d9488", light: "#ccfbf1", border: "#5eead4",
-    userType: "student", placeholder: "e.g. STCS1A001",
-    formatExample: "STCS1A001", formatDesc: "ST + DEPT + YR + SEC + ROLL",
-    password: "student123", hint: "Day Scholar Student",
+    userType: "student", placeholder: "e.g. 714024104200",
+    formatExample: "714024104200", formatDesc: "12-digit Register Number",
+    password: "last 4 digits of register", hint: "Day Scholar Student",
   },
   {
     key: "advisor", label: "Advisor", icon: GraduationCap,
@@ -41,15 +42,16 @@ const SECTIONS = ["A","B","C"];
 
 const buildUserMap = () => {
   const u = {};
+  Object.values(STUDENTS).forEach(s => {
+    u[s.regNo] = {
+      pass: s.pass, role: "student",
+      name: s.name, dept: s.dept, year: s.year, section: s.section,
+      rollNo: s.rollNo, regNo: s.regNo, photo: s.photo,
+    };
+  });
   DEPT_KEYS.forEach(dept => {
     YEARS.forEach(yr => {
-      SECTIONS.forEach((sec, si) => {
-        for (let roll = 1; roll <= 3; roll++) {
-          const globalRoll = si * 3 + roll;
-          const rollStr = String(globalRoll).padStart(3,"0");
-          const uid = "ST"+dept+yr+sec+rollStr;
-          u[uid] = { pass:"student123", role:"student", dept, year:yr, rollNo:rollStr, section:sec };
-        }
+      SECTIONS.forEach(sec => {
         u["ADV"+dept+yr+sec] = { pass:"advisor123", role:"advisor", dept, year:yr, section:sec };
       });
     });
@@ -429,8 +431,8 @@ export default function SignIn({ onLogin }) {
 
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:"12px 12px 8px" }}>
               {[
-                { label:"Student", ex:"STCS1A001", desc:"ST + DEPT + YR + SEC + ROLL", color:ROLES[0].color, light:ROLES[0].light, border:ROLES[0].border },
-                { label:"Advisor", ex:"ADVCS1A",   desc:"ADV + DEPT + YR + SEC",       color:ROLES[2].color, light:ROLES[2].light, border:ROLES[2].border },
+                { label:"Student", ex:"714024104200", desc:"12-digit Register Number", color:ROLES[0].color, light:ROLES[0].light, border:ROLES[0].border },
+                { label:"Advisor", ex:"ADVCS3D",   desc:"ADV + DEPT + YR + SEC",       color:ROLES[2].color, light:ROLES[2].light, border:ROLES[2].border },
               ].map(f => (
                 <div key={f.label} className="si-format-card" style={{
                   borderRadius:14, padding:"11px 12px",
@@ -460,7 +462,7 @@ export default function SignIn({ onLogin }) {
             <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:"6px 16px", padding:"10px 16px", borderTop:"1px solid #f1f5f9" }}>
               <span style={{ color:"#94a3b8", fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.7px" }}>Demo Passwords</span>
               {[
-                { label:"Student", val:"student123", color:ROLES[0].color, bg:ROLES[0].light, border:ROLES[0].border },
+                { label:"Student", val:"Last 4 digits of register (e.g. 4200)", color:ROLES[0].color, bg:ROLES[0].light, border:ROLES[0].border },
                 { label:"Advisor", val:"advisor123", color:ROLES[2].color, bg:ROLES[2].light, border:ROLES[2].border },
                 { label:"HOD",     val:"hod123",     color:ROLES[3].color, bg:ROLES[3].light, border:ROLES[3].border },
               ].map(c => (
