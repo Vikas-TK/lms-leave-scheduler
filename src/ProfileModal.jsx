@@ -4,7 +4,6 @@ import {
   XCircle, Home, Sun, GraduationCap, Building2, BarChart3,
   Layers, ClipboardList, BadgeCheck, Shield, Sparkles,
 } from "lucide-react";
-import { seedAttendance } from "./utils/attendance";
 
 const DEPTS = {
   CS:"Computer Science", IT:"Information Technology",
@@ -25,7 +24,10 @@ const HOD_NAMES = {
   CIVIL:"Prof. Ravi Sharma", BME:"Prof. Uma Devi", EEE:"Prof. Ganesh Rao", ECE:"Prof. Priya S",
 };
 
-
+function seedAttendance(rollNo, dept) {
+  const n = (parseInt(rollNo || "1", 10) + dept.charCodeAt(0)) % 20;
+  return 78 + n; // 78%–97%
+}
 
 const OD_QUOTA = 20;
 

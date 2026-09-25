@@ -26,6 +26,7 @@ const HOD_NAMES = {
 const fmt = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "—";
 const fmtShort = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const daysCount = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a)) / 86400000) + 1);
+const todayStr = () => new Date().toISOString().split("T")[0];
 
 function advisorFromReq(req) {
   const idx = (parseInt(req.rollNo || "1", 10)) % ADV_NAMES.length;
