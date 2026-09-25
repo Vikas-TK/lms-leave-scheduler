@@ -8,7 +8,7 @@ import ProfileModal from "./ProfileModal";
 import ClearancePass from "./ClearancePass";
 import LetterPreviewModal from "./LetterPreviewModal.jsx";
 import ClickSpark from "./ClickSpark";
-import { STUDENTS } from "./data/students";
+import { supabase } from "./supabaseClient";
 import {
   FileText, CheckCircle2, Clock, XCircle,
   Sparkles, ArrowRight, MessageCircle, ExternalLink,
@@ -52,180 +52,135 @@ const HOD_NAMES = {
   CIVIL:"Prof. Ravi Sharma", BME:"Prof. Uma Devi", EEE:"Prof. Ganesh Rao", ECE:"Prof. Priya S",
 };
 
-const buildUsers = () => {
-  const u = {};
-  let ai = 0;
-  Object.values(STUDENTS).forEach(s => {
-    u[s.regNo] = {
-      pass: s.pass, role: "student",
-      name: s.name, dept: s.dept, year: s.year,
-      section: s.section, rollNo: s.rollNo, regNo: s.regNo, photo: s.photo,
-    };
-  });
-  DEPT_KEYS.forEach(dept => {
-    YEARS.forEach(yr => {
-      SECTIONS.forEach(sec => {
-        u[`ADV${dept}${yr}${sec}`] = {
-          pass:"advisor123", role:"advisor",
-          name: ADV_NAMES[ai++ % ADV_NAMES.length],
-          dept, year:yr, section:sec,
-        };
-      });
-    });
-    u[`HOD${dept}`] = { pass:"hod123", role:"hod", name:HOD_NAMES[dept], dept };
-  });
-  return u;
-};
-const USERS = buildUsers();
-
-// ── Reactive store with pre-seeded demo applications (persisted to localStorage) ──
-const _SEED_DB = [
-  {
-    id: "OD-001",
-    studentId: "714024104200",
-    studentName: "714024104200",
-    dept: "CS",
-    year: 3,
-    section: "D",
-    rollNo: "200",
-    requestType: "od",
-    fromDate: "2026-08-10",
-    fromTime: "09:00",
-    toDate: "2026-08-12",
-    toTime: "18:00",
-    reason: "Smart India Hackathon 2026 Grand Finale at MIT World Peace University — Presenting AI Autonomous Traffic System",
-    coApplicants: ["714024104189", "714024104190"],
-    photo: "/students/714024104200.jpg",
-    attachmentName: "SIH2026_Selection_Letter.pdf",
-    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of the Department of Computer Science\n\nAnd\n\nProf. Arun M\nClass Advisor — CS3D\n\nRespected Faculty Members,\n\nSubject: Requisition for On-Duty (OD) Permission — Smart India Hackathon 2026\n\nI am writing to formally request On-Duty (OD) permission for 3 days from 10 August 2026 to 12 August 2026. Our team has qualified for the Grand Finale of Smart India Hackathon 2026 at MIT.\n\nKindly grant OD attendance for the mentioned duration.\n\nYours faithfully,\n714024104200\nRoll No: 200, CS3D",
-    advisorStatus: "approved",
-    advisorAt: "2026-08-08",
-    hodStatus: "approved",
-    hodAt: "2026-08-09",
-    createdAt: "2026-08-07",
-  },
-  {
-    id: "OD-002",
-    studentId: "714024104200",
-    studentName: "714024104200",
-    dept: "CS",
-    year: 3,
-    section: "D",
-    rollNo: "200",
-    requestType: "gatepass",
-    fromDate: "2026-09-02",
-    fromTime: "10:00",
-    toDate: "2026-09-05",
-    toTime: "17:00",
-    reason: "Paper presentation on Quantum Computing & Cryptography at IEEE International Conference",
-    coApplicants: ["714024104189"],
-    photo: "/students/714024104200.jpg",
-    attachmentName: "IEEE_Acceptance_Letter.pdf",
-    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of the Department of Computer Science\n\nAnd\n\nProf. Arun M\nClass Advisor — CS3D\n\nRespected Sir/Madam,\n\nSubject: Application for Campus Gate Pass Permission\n\nI request Gate Pass clearance from 02 September 2026 to 05 September 2026 to represent our institution at the IEEE International Conference.\n\nThanking you,\n714024104200 (714024104200)",
-    advisorStatus: "approved",
-    advisorAt: "2026-08-28",
-    hodStatus: "approved",
-    hodAt: "2026-08-28",
-    createdAt: "2026-08-27",
-  },
-  {
-    id: "OD-003",
-    studentId: "714024104200",
-    studentName: "714024104200",
-    dept: "CS",
-    year: 3,
-    section: "D",
-    rollNo: "200",
-    requestType: "od",
-    fromDate: "2026-09-12",
-    fromTime: "09:00",
-    toDate: "2026-09-14",
-    toTime: "18:00",
-    reason: "National Cyber Security Championship 2026 at IIT Bombay — Capture The Flag (CTF) Competition",
-    coApplicants: ["714024104191"],
-    photo: "/students/714024104200.jpg",
-    attachmentName: "IITB_CTF_Invite.pdf",
-    letter: "29 August 2026\n\nTo,\nProf. Suresh Babu\nHead of Department\n\nAnd\n\nProf. Arun M\nClass Advisor — CS3D\n\nSubject: Request for OD Approval for National Cyber Security Championship\n\nI request OD approval from 12 September 2026 to 14 September 2026 for representing our college at IIT Bombay.\n\nSincerely,\n714024104200",
-    advisorStatus: null,
-    hodStatus: null,
-    createdAt: "2026-08-29",
-  },
-];
-
-// Hydrate from localStorage if a previous session saved requests (so student submissions survive refresh / advisor login)
-let OD_DB;
-try {
-  const saved = typeof localStorage !== "undefined" ? localStorage.getItem("od_requests") : null;
-  OD_DB = saved ? JSON.parse(saved) : _SEED_DB;
-  if (!Array.isArray(OD_DB) || OD_DB.length === 0) OD_DB = _SEED_DB;
-} catch (_) {
-  OD_DB = _SEED_DB;
-}
-// One-time migration: ensure every stored request has a photo for the advisor dashboard
-try {
-  let migrated = false;
-  OD_DB = OD_DB.map(r => {
-    if (!r.photo) {
-      const s = STUDENTS[r.studentId];
-      if (s && s.photo) { migrated = true; return { ...r, photo: s.photo }; }
-      if (/^714024104\d{3}$/.test(r.studentId) && r.studentId !== "714024104198") {
-        migrated = true; return { ...r, photo: `/students/${r.studentId}.jpg` };
-      }
-    }
-    return r;
-  });
-  if (migrated) {
-    try { localStorage.setItem("od_requests", JSON.stringify(OD_DB)); } catch (_) {}
+const addRequest = async (req) => { 
+  const { data, error } = await supabase.from('applications').insert([req]).select(); 
+  if (error) {
+    console.error("Insert Error:", error);
+    return { success: false, error };
   }
-} catch (_) {}
-let nextId = (() => {
-  let max = 3;
-  try {
-    for (const r of OD_DB) {
-      const n = parseInt(String(r.id).split("-")[1], 10);
-      if (!isNaN(n) && n > max) max = n;
-    }
-  } catch (_) {}
-  return max + 1;
-})();
-
-const _listeners = new Set();
-const _notify = () => _listeners.forEach(fn => fn());
-const _persist = () => {
-  try { localStorage.setItem("od_requests", JSON.stringify(OD_DB)); } catch (_) {}
-  _notify();
+  return { success: true, data };
 };
-// Keep in-memory store in sync if another tab writes to localStorage
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => {
-    if (e.key === "od_requests" && e.newValue) {
-      try {
-        const parsed = JSON.parse(e.newValue);
-        if (Array.isArray(parsed)) { OD_DB = parsed; _notify(); }
-      } catch (_) {}
-    }
-  });
-}
 
-const addRequest  = (req) => { OD_DB = [...OD_DB, req]; _persist(); };
-const patchRequest = (id, patch) => { OD_DB = OD_DB.map(r => r.id === id ? {...r,...patch} : r); _persist(); };
+const patchRequest = async (id, patch) => { 
+  const { data, error } = await supabase.from('applications').update(patch).eq('id', id).select(); 
+  if (error) {
+    console.error("Supabase patchRequest error:", error);
+    return { success: false, error };
+  }
+  return { success: true, data };
+};
+
+const addHistoryRecord = async (record) => {
+  const { data, error } = await supabase.from('application_routing_history').insert([record]).select();
+  if (error) {
+    console.error("History Insert Error:", error);
+    return { success: false, error };
+  }
+  return { success: true, data };
+};
+
+function ToastNotification({ toast, onClose }) {
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => {
+      onClose();
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [toast, onClose]);
+
+  if (!toast) return null;
+  const isError = toast.type === "error";
+
+  return (
+    <div style={{
+      position: "fixed",
+      top: 24,
+      right: 24,
+      zIndex: 999999,
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      padding: "14px 20px",
+      borderRadius: 16,
+      background: isError ? "#fef2f2" : "#f0fdf4",
+      border: `1.5px solid ${isError ? "#fca5a5" : "#86efac"}`,
+      boxShadow: "0 14px 34px rgba(0,0,0,0.12)",
+      color: isError ? "#991b1b" : "#166534",
+      fontSize: 13,
+      fontWeight: 700,
+      animation: "toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+      maxWidth: 440,
+    }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: "50%",
+        background: isError ? "#dc2626" : "#16a34a",
+        color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 14, fontWeight: 900, flexShrink: 0
+      }}>
+        {isError ? "✕" : "✓"}
+      </div>
+      <div style={{ flex: 1 }}>
+        {toast.title && (
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", opacity: 0.8, marginBottom: 2 }}>
+            {toast.title}
+          </div>
+        )}
+        <div style={{ lineHeight: 1.45 }}>{toast.message}</div>
+      </div>
+      <button onClick={onClose} style={{
+        background: "none", border: "none", color: "inherit", cursor: "pointer",
+        padding: 4, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.7
+      }}>
+        ✕
+      </button>
+    </div>
+  );
+}
 
 function useOD() {
-  const [,tick] = useState(0);
-  const cb = useCallback(() => tick(n => n+1), []);
-  useEffect(() => { _listeners.add(cb); return () => _listeners.delete(cb); }, [cb]);
-  return OD_DB;
+  const [data, setData] = useState([]);
+
+  const fetchApps = useCallback(async () => {
+    const { data: apps, error } = await supabase.from('applications').select('*').order('submittedAt', { ascending: false });
+    if (!error && apps) {
+      const arr = Object.assign([...apps], { refresh: fetchApps });
+      setData(arr);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchInitial = async () => {
+      const { data: apps } = await supabase.from('applications').select('*').order('submittedAt', { ascending: false });
+      if (mounted && apps) {
+        const arr = Object.assign([...apps], { refresh: fetchApps });
+        setData(arr);
+      }
+    };
+    fetchInitial();
+
+    const channelName = `apps-${Math.random().toString(36).substring(7)}`;
+    const channel = supabase.channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, () => {
+        fetchApps();
+      })
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(channel); };
+  }, [fetchApps]);
+
+  return data;
 }
 
 const getStatus = r => {
-  if (r.hodStatus === "approved") return "approved";
-  if (r.hodStatus === "rejected" || r.advisorStatus === "rejected") return "rejected";
-  if (r.advisorStatus === "approved") return "pending_hod";
-  return "pending_advisor";
+  if (r.status === 'completed') return "approved";
+  if (r.status === 'cancelled') return "rejected";
+  if (r.status === 'draft') return "draft";
+  return "pending";
 };
-const isPending  = r => { const s = getStatus(r); return s==="pending_advisor"||s==="pending_hod"; };
+const isPending  = r => { const s = getStatus(r); return s==="pending"; };
 const isApproved = r => getStatus(r)==="approved";
 const isRejected = r => getStatus(r)==="rejected";
+const isDraft = r => getStatus(r)==="draft";
 
 const fmt = d => d ? new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"}) : "";
 const daysCount = (a,b) => Math.max(1, Math.round((new Date(b)-new Date(a))/86400000)+1);
@@ -250,25 +205,37 @@ function cleanLetterText(text) {
 }
 
 // ── AI letter via Groq API (openai/gpt-oss-120b & qwen/qwen3.8-27b) ─────────────
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
+const rawGroq = (import.meta.env.VITE_GROQ_API_KEY || "").replace(/["']/g, "").trim();
+const rawGemini = (import.meta.env.VITE_GEMINI_API_KEY || "").replace(/["']/g, "").trim();
+const GROQ_API_KEY = (rawGroq.startsWith("gsk_") ? rawGroq : (rawGemini.startsWith("gsk_") ? rawGemini : (rawGroq || rawGemini)));
 
 
-async function genLetter({studentName,rollNo,dept,year,section,fromDate,toDate,reason}) {
+async function genLetter({studentName,rollNo,dept,year,section,fromDate,toDate,reason,reqType}) {
   const n = daysCount(fromDate,toDate);
   const advisorId = `ADV${dept}${year}${section}`;
   const hodId     = `HOD${dept}`;
-  const advisorName = USERS[advisorId]?.name || "Class Advisor";
-  const hodName     = USERS[hodId]?.name     || HOD_NAMES[dept] || "Head of Department";
+  const { data: adv } = await supabase.from('users').select('name').eq('id', advisorId).single();
+  const { data: hod } = await supabase.from('users').select('name').eq('id', hodId).single();
+  const advisorName = adv?.name || "Class Advisor";
+  const hodName     = hod?.name || HOD_NAMES[dept] || "Head of Department";
   const sName       = studentName || rollNo || "Student";
 
-  const systemPrompt = `You are an expert institutional AI assistant for college On-Duty (OD) applications.
-Your job is to generate a clean, formal, complete On-Duty application letter from the student to their college faculty.
+  const typeMap = {
+    od: "On-Duty (OD)",
+    gatepass: "Campus Gate Pass",
+    leave: "Leave Application",
+    apology: "Apology"
+  };
+  const letterType = typeMap[reqType] || "On-Duty (OD)";
+
+  const systemPrompt = `You are an expert institutional AI assistant for college applications.
+Your job is to generate a clean, formal, complete ${letterType} letter from the student to their college faculty.
 CRITICAL FORMAT RULES:
 1. Do NOT use markdown bold asterisks (NO ** or * stars anywhere in the text).
 2. Do NOT include a college letterhead or date at the top (the paper template already prints the official college header and date). Start directly with the "To" address.
 3. Write complete plain text with zero placeholders or bracketed blanks. Use the exact names and details provided.`;
 
-  const userPrompt = `Write a formal college On-Duty (OD) application letter starting directly with "To".
+  const userPrompt = `Write a formal college ${letterType} letter starting directly with "To".
 
 Student Details:
 - Student Name : ${sName}
@@ -289,11 +256,11 @@ Class Advisor, Department of ${DEPTS[dept] || dept}
 ${hodName},
 Head of Department, Department of ${DEPTS[dept] || dept}
 
-Subject: Requisition for On-Duty (OD) Leave for ${n} Day(s) — ${sName} (${rollNo})
+Subject: ${reqType === 'apology' ? `Apology Letter regarding ${reason}` : `Requisition for ${letterType} for ${n} Day(s) — ${sName} (${rollNo})`}
 
 Respected Sir/Madam,
 
-[Formal body paragraph explaining participation in ${reason} from ${fmt(fromDate)} to ${fmt(toDate)}. Assurance to catch up on missed academic work.]
+[Formal body paragraph explaining ${reqType === 'apology' ? `sincere apology for ${reason} which occurred around ${fmt(fromDate)}. Assurance not to repeat the mistake.` : `participation/absence for ${reason} from ${fmt(fromDate)} to ${fmt(toDate)}. Assurance to catch up on missed academic work.`}]
 
 Thank you.
 
@@ -404,12 +371,12 @@ body { font-family: 'EB Garamond', Georgia, serif; color: #0f172a; margin: 0; pa
     <div class="sign-line">${req.studentName || req.studentId}<br/><span style="font-size:7.5pt;color:#64748b;font-weight:500">${req.rollNo || req.studentId} · ${clsLabel(req)}</span></div>
   </div>
   <div class="stamp-box">
-    <div class="stamp-seal">${req.advisorStatus === "approved" ? "✓ Advisor Approved" : "⏳ Pending Review"}</div>
-    <div class="sign-line">Class Advisor</div>
+    <div class="stamp-seal">${req.status === "completed" ? "✓ Final Verification" : "⏳ Pending Verification"}</div>
+    <div class="sign-line">Authorized Signatory</div>
   </div>
   <div class="stamp-box">
-    <div class="stamp-seal" style="border-color:#2563eb;color:#1d4ed8;background:#eff6ff">${req.hodStatus === "approved" ? "🏛️ HOD Sanctioned" : "🏛️ Department Seal"}</div>
-    <div class="sign-line">Head of Department</div>
+    <div class="stamp-seal" style="border-color:#2563eb;color:#1d4ed8;background:#eff6ff">${req.status === "completed" ? "🏛️ Department Sanctioned" : "🏛️ Department Seal"}</div>
+    <div class="sign-line">Office of the HOD</div>
   </div>
 </div>
 </body></html>`);
@@ -420,12 +387,12 @@ body { font-family: 'EB Garamond', Georgia, serif; color: #0f172a; margin: 0; pa
 // ── UI Atoms (Curvy & Light Themed) ──────────────────────────────────────────
 function Badge({status}) {
   const M = {
-    pending_advisor:{bg:"#fef3c7",color:"#d97706",border:"#fde68a",label:"Pending Advisor"},
-    pending_hod:    {bg:"#dbeafe",color:"#2563eb",border:"#bfdbfe",label:"Pending HOD"},
-    approved:       {bg:"#dcfce7",color:"#16a34a",border:"#86efac",label:"Approved ✓"},
-    rejected:       {bg:"#fee2e2",color:"#dc2626",border:"#fca5a5",label:"Rejected ✗"},
+    draft:          {bg:"#f1f5f9",color:"#64748b",border:"#e2e8f0",label:"Draft"},
+    pending:        {bg:"#fef3c7",color:"#d97706",border:"#fde68a",label:"In Progress"},
+    approved:       {bg:"#dcfce7",color:"#16a34a",border:"#86efac",label:"Completed ✓"},
+    rejected:       {bg:"#fee2e2",color:"#dc2626",border:"#fca5a5",label:"Cancelled ✗"},
   };
-  const s = M[status]||M.pending_advisor;
+  const s = M[status]||M.pending;
   return <span style={{background:s.bg,color:s.color,border:`1.5px solid ${s.border}`,padding:"4px 12px",borderRadius:9999,fontSize:11,fontWeight:800,letterSpacing:.3,whiteSpace:"nowrap"}}>{s.label}</span>;
 }
 
@@ -496,11 +463,14 @@ function Stat({label,val,color,bg,border}) {
 // ── Settings ──────────────────────────────────────────────────────────────────
 function SettingsModal({user,onClose}) {
   const [old,setOld]=useState(""); const [nw,setNw]=useState(""); const [cf,setCf]=useState(""); const [msg,setMsg]=useState(null);
-  const save=()=>{
-    if(USERS[user.id].pass!==old){setMsg({e:true,t:"Old password incorrect."});return;}
+  const save=async ()=>{
+    const { data: dbUser } = await supabase.from('users').select('password').eq('id', user.id).single();
+    if(!dbUser || dbUser.password!==old){setMsg({e:true,t:"Old password incorrect."});return;}
     if(nw.length<6){setMsg({e:true,t:"Min 6 characters."});return;}
     if(nw!==cf){setMsg({e:true,t:"Passwords don't match."});return;}
-    USERS[user.id].pass=nw; setMsg({e:false,t:"Password changed!"}); setOld(""); setNw(""); setCf("");
+    const { error } = await supabase.from('users').update({password: nw}).eq('id', user.id);
+    if(error){setMsg({e:true,t:"Update failed."});return;}
+    setMsg({e:false,t:"Password changed!"}); setOld(""); setNw(""); setCf("");
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.4)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>
@@ -533,7 +503,7 @@ function SettingsModal({user,onClose}) {
 }
 
 // ── Student Dashboard ─────────────────────────────────────────────────────────
-function StudentDashboard({user, activeTab, onTabChange}) {
+function StudentDashboard({user, activeTab, onTabChange, showToast}) {
   const requests = useOD();
   const [view,setView]=useState("list");
   const [selId,setSelId]=useState(null);
@@ -541,6 +511,11 @@ function StudentDashboard({user, activeTab, onTabChange}) {
   const [clearanceReq,setClearanceReq]=useState(null);
   const [previewDocReq,setPreviewDocReq]=useState(null);
   const [tabFilter, setTabFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("dateDesc");
+
+  useEffect(() => {
+    setView("list");
+  }, [activeTab]);
 
   const mine = requests.filter(r=>r.studentId===user.id);
   const totalC    = mine.length;
@@ -553,22 +528,89 @@ function StudentDashboard({user, activeTab, onTabChange}) {
     if (tabFilter === "approved") return isApproved(r);
     if (tabFilter === "rejected") return isRejected(r);
     return true;
+  }).sort((a, b) => {
+    if (sortBy === "dateDesc") return new Date(b.submittedAt) - new Date(a.submittedAt);
+    if (sortBy === "dateAsc") return new Date(a.submittedAt) - new Date(b.submittedAt);
+    if (sortBy === "durDesc") return daysCount(b.fromDate, b.toDate) - daysCount(a.fromDate, a.toDate);
+    if (sortBy === "durAsc") return daysCount(a.fromDate, a.toDate) - daysCount(b.fromDate, b.toDate);
+    return 0;
   });
 
-  const handleNewSubmit = (formData) => {
-    addRequest({
-      id:`OD-${String(nextId++).padStart(3,"0")}`,
-      studentId:user.id, studentName:user.name,
-      dept:user.dept, year:user.year, section:user.section, rollNo:user.rollNo,
-      ...formData,
-      // Keep explicit null (e.g. 714024104198 has no photo) — don't fallback to a 404 file
-      photo: user.photo !== undefined ? user.photo : `/students/${(user.regNo || user.id || "").replace(/\*/g, "")}.jpg`,
-      advisorStatus: null, advisorAt: null,
-      hodStatus: null, hodAt: null,
-      createdAt:todayStr(),
+  const handleForwardToAdvisor = async (req) => {
+    const advisorId = `ADV${req.dept}${req.year}${req.section || 'A'}`;
+    const res = await patchRequest(req.id, {
+      status: 'in_progress',
+      current_assignee_id: advisorId
     });
+    if (res.success) {
+      await addHistoryRecord({
+        applicationId: req.id,
+        actionByUserId: user.id,
+        forwardedToUserId: advisorId,
+        actionTaken: 'forwarded'
+      });
+    }
+    if (requests.refresh) requests.refresh();
+    if (res && res.success === false) {
+      if (showToast) showToast(`Failed to forward application: ${res.error?.message || 'Database error'}`, 'error');
+    } else {
+      if (showToast) showToast(`Application #${req.id} successfully forwarded to Class Advisor (${advisorId})!`, 'success');
+    }
+  };
+
+  const handleNewSubmit = async (formData) => {
+    const newId = `OD-${Math.floor(Math.random() * 10000).toString().padStart(4,"0")}`;
+    const autoForward = Boolean(formData.autoForward);
+    const advisorId = `ADV${user.dept}${user.year}${user.section || 'A'}`;
+
+    const newAppPayload = {
+      id: newId,
+      studentId: user.id,
+      studentName: user.name,
+      dept: user.dept,
+      year: user.year,
+      section: user.section,
+      rollNo: user.rollNo,
+      requestType: formData.requestType,
+      fromDate: formData.fromDate,
+      fromTime: formData.fromTime || null,
+      toDate: formData.toDate,
+      toTime: formData.toTime || null,
+      reason: formData.reason,
+      coApplicants: formData.coApplicants || [],
+      attachmentName: formData.attachmentName || null,
+      letter: formData.letter,
+      photo: user.photo !== undefined ? user.photo : `/students/${(user.regNo || user.id || "").replace(/\*/g, "")}.jpg`,
+      status: autoForward ? 'in_progress' : 'draft',
+      current_assignee_id: autoForward ? advisorId : null,
+      submittedAt: todayStr(),
+    };
+
+    const res = await addRequest(newAppPayload);
+    if (res && res.success) {
+      await addHistoryRecord({
+        applicationId: newId,
+        actionByUserId: user.id,
+        forwardedToUserId: autoForward ? advisorId : null,
+        actionTaken: autoForward ? 'created_and_forwarded' : 'created'
+      });
+    }
+
+    if (requests.refresh) requests.refresh();
     setRenewalTarget(null);
-    setTimeout(()=>setView("list"),1800);
+
+    if (res && res.success === false) {
+      if (showToast) showToast(`Failed to save application: ${res.error?.message || 'Database error'}`, 'error');
+    } else {
+      if (showToast) {
+        if (autoForward) {
+          showToast(`Application #${newId} created and forwarded to Class Advisor (${advisorId})!`, 'success');
+        } else {
+          showToast(`Draft #${newId} saved to your dashboard! You can review and forward it anytime.`, 'success');
+        }
+      }
+    }
+    setTimeout(() => setView("list"), 1200);
   };
 
   const handleStartRenewal = (req) => {
@@ -633,6 +675,41 @@ function StudentDashboard({user, activeTab, onTabChange}) {
           </div>
         </div>
 
+        {isDraft(req) && (
+          <div style={{borderRadius:20,padding:"18px 22px",background:"#eff6ff",border:"1.5px solid #bfdbfe",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
+            <div>
+              <div style={{color:"#1e40af",fontWeight:800,fontSize:14,marginBottom:4}}>📝 Draft Mode (Action Required)</div>
+              <p style={{margin:0,color:"#2563eb",fontSize:13}}>This application is currently saved as a draft. Forward it to your Class Advisor to begin the approval process.</p>
+            </div>
+            <Btn onClick={() => handleForwardToAdvisor(req)} style={{background: '#2563eb', boxShadow: '0 4px 16px rgba(37,99,235,0.3)', fontSize:13, padding:"10px 22px"}}>
+              🚀 Forward to Advisor
+            </Btn>
+          </div>
+        )}
+
+        {isPending(req) && (
+          <div style={{borderRadius:20,padding:"18px 22px",background:"#fffbeb",border:"1.5px solid #fde68a",marginBottom:16}}>
+            <div style={{color:"#b45309",fontWeight:800,fontSize:14,marginBottom:4}}>
+              ⏳ Application In Progress
+            </div>
+            <p style={{margin:0,color:"#92400e",fontSize:13}}>
+              This application is currently in the review process. 
+              {req.current_assignee_id ? ` It is waiting on ${req.current_assignee_id}.` : ''}
+            </p>
+          </div>
+        )}
+
+        {isRejected(req) && (
+          <div style={{borderRadius:20,padding:"18px 22px",background:"#fef2f2",border:"1.5px solid #fecaca",marginBottom:16}}>
+            <div style={{color:"#dc2626",fontWeight:800,fontSize:14,marginBottom:4}}>❌ Application Cancelled / Rejected</div>
+            {req.cancelReason ? (
+              <p style={{margin:0,color:"#991b1b",fontSize:13}}><strong>Reason provided:</strong> {req.cancelReason}</p>
+            ) : (
+              <p style={{margin:0,color:"#991b1b",fontSize:13}}>This application was not approved by faculty.</p>
+            )}
+          </div>
+        )}
+
         {/* Dynamic Validity Banner */}
         {validity.isExpired ? (
           <div style={{borderRadius:20,padding:"16px 20px",background:"#fef2f2",border:"1.5px solid #fecaca",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
@@ -677,7 +754,141 @@ function StudentDashboard({user, activeTab, onTabChange}) {
     />
   );
 
-  // List View (Clean Light-Mint OD Dashboard)
+  // ── Render Card Item ──────────────────────────────────────────────
+  const renderCard = (req, compact = false) => {
+    const st = getStatus(req);
+    const validity = checkValidity(req);
+    return (
+      <div
+        key={req.id}
+        onClick={()=>{setSelId(req.id);setView("detail");}}
+        style={{
+          background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:18,
+          padding: compact ? "12px 16px" : "16px 20px", cursor:"pointer",
+          transition:"all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:16,
+        }}
+        onMouseEnter={e=>{
+          e.currentTarget.style.background="#ffffff";
+          e.currentTarget.style.borderColor="#86efac";
+          e.currentTarget.style.transform="translateY(-2px)";
+          e.currentTarget.style.boxShadow="0 10px 24px rgba(22, 163, 74, 0.08)";
+        }}
+        onMouseLeave={e=>{
+          e.currentTarget.style.background="#f8fafc";
+          e.currentTarget.style.borderColor="#e2e8f0";
+          e.currentTarget.style.transform="translateY(0)";
+          e.currentTarget.style.boxShadow="none";
+        }}
+      >
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,fontWeight:900,color:"#16a34a",fontFamily:"monospace"}}>{req.id}</span>
+            <Badge status={st}/>
+            {!compact && <ValidityBadge req={req} compact/>}
+          </div>
+          <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {req.reason}
+          </div>
+          <div style={{fontSize:12,color:"#64748b",fontWeight:600}}>
+            {fmt(req.fromDate)} {compact ? "" : `— ${fmt(req.toDate)} · ${daysCount(req.fromDate,req.toDate)} day(s)`}
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          {isDraft(req) ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleForwardToAdvisor(req);
+              }}
+              style={{
+                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 9999,
+                padding: "7px 16px",
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(37,99,235,0.3)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.18s ease"
+              }}
+              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.04)"}
+              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+            >
+              🚀 Forward to Advisor
+            </button>
+          ) : !compact && isApproved(req) ? (
+            <span style={{fontSize:11,fontWeight:800,color:"#16a34a",background:"#dcfce7",border:"1px solid #86efac",borderRadius:9999,padding:"4px 10px"}}>
+              🪪 Pass Ready
+            </span>
+          ) : null}
+          <span style={{color:"#94a3b8",fontSize:18}}>›</span>
+        </div>
+      </div>
+    );
+  };
+
+  // ── HOME VIEW (ActiveTab === "dashboard") ─────────────────────────
+  if (activeTab === "dashboard" && view === "list") {
+    return (
+      <div style={{maxWidth:1080,margin:"0 auto",display:"flex",flexDirection:"column",gap:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
+          <div>
+            <h1 style={{margin:"0 0 4px",fontSize:26,fontWeight:900,color:"#0f172a",letterSpacing:"-0.4px"}}>
+              Welcome, {(user.name || "Student").split(" ")[0]}!
+            </h1>
+            <p style={{margin:0,fontSize:13,color:"#64748b",fontWeight:600}}>
+              {clsLabel(user)} · {DEPTS[user.dept] || user.dept}
+            </p>
+          </div>
+          <button
+            onClick={()=>{setRenewalTarget(null);setView("new");}}
+            style={{
+              background:"#16a34a", color:"#ffffff", border:"none", borderRadius:9999,
+              padding:"11px 24px", fontSize:13, fontWeight:800, cursor:"pointer",
+              boxShadow:"0 4px 16px rgba(22, 163, 74, 0.35)", display:"flex", alignItems:"center", gap:8,
+              transition:"all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
+            }}
+            onMouseEnter={e=>{
+              e.currentTarget.style.transform="translateY(-2px) scale(1.02)";
+              e.currentTarget.style.boxShadow="0 8px 24px rgba(22, 163, 74, 0.45)";
+            }}
+            onMouseLeave={e=>{
+              e.currentTarget.style.transform="translateY(0) scale(1)";
+              e.currentTarget.style.boxShadow="0 4px 16px rgba(22, 163, 74, 0.35)";
+            }}
+          >
+            <Plus size={16} strokeWidth={2.8}/> Create Application
+          </button>
+        </div>
+
+        {/* Recent Applications Simplified List */}
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h3 style={{margin:0,fontSize:18,fontWeight:800,color:"#0f172a"}}>Recent Applications</h3>
+            <button onClick={()=>onTabChange("applications")} style={{background:"none",border:"none",color:"#2563eb",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              View All <ArrowRight size={14}/>
+            </button>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {mine.length === 0 ? (
+              <div style={{padding:"30px",textAlign:"center",background:"#ffffff",border:"1.5px dashed #cbd5e1",borderRadius:18,color:"#94a3b8",fontSize:13,fontWeight:600}}>
+                You haven't submitted any applications yet.
+              </div>
+            ) : (
+              mine.slice(0, 4).map(req => renderCard(req, true))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── APPLICATIONS VIEW (ActiveTab === "applications") ──────────────
   return (
     <div style={{maxWidth:1080,margin:"0 auto",display:"flex",flexDirection:"column",gap:20}}>
 
@@ -685,41 +896,12 @@ function StudentDashboard({user, activeTab, onTabChange}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
         <div>
           <h1 style={{margin:"0 0 4px",fontSize:26,fontWeight:900,color:"#0f172a",letterSpacing:"-0.4px"}}>
-            My OD Requests
+            All Applications
           </h1>
           <p style={{margin:0,fontSize:13,color:"#64748b",fontWeight:600}}>
-            {clsLabel(user)} · {DEPTS[user.dept] || user.dept} · Student ID: {user.id}
+            Track, sort, and manage your college requests.
           </p>
         </div>
-
-        <button
-          onClick={()=>{setRenewalTarget(null);setView("new");}}
-          style={{
-            background:"#16a34a",
-            color:"#ffffff",
-            border:"none",
-            borderRadius:9999,
-            padding:"11px 24px",
-            fontSize:13,
-            fontWeight:800,
-            cursor:"pointer",
-            boxShadow:"0 4px 16px rgba(22, 163, 74, 0.35)",
-            display:"flex",
-            alignItems:"center",
-            gap:8,
-            transition:"all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
-          }}
-          onMouseEnter={e=>{
-            e.currentTarget.style.transform="translateY(-2px) scale(1.02)";
-            e.currentTarget.style.boxShadow="0 8px 24px rgba(22, 163, 74, 0.45)";
-          }}
-          onMouseLeave={e=>{
-            e.currentTarget.style.transform="translateY(0) scale(1)";
-            e.currentTarget.style.boxShadow="0 4px 16px rgba(22, 163, 74, 0.35)";
-          }}
-        >
-          <Plus size={16} strokeWidth={2.8}/> + OD Letter
-        </button>
       </div>
 
       {/* ── 4 Quick Stats (Light Curvy Cards) ────────────────────── */}
@@ -738,7 +920,7 @@ function StudentDashboard({user, activeTab, onTabChange}) {
         boxShadow:"0 10px 30px rgba(15,23,42,0.04)",
         border:"1.5px solid #e2e8f0",
       }}>
-        {/* Filter Pills */}
+        {/* Filter Pills & Sorting */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",background:"#f1f5f9",borderRadius:9999,padding:4,gap:4}}>
             {[
@@ -768,84 +950,34 @@ function StudentDashboard({user, activeTab, onTabChange}) {
             ))}
           </div>
 
-          <span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>
-            Quota Balance: <strong style={{color:"#16a34a"}}>{Math.max(0, 20 - approvedC)}</strong> / 20 days
-          </span>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <select 
+              value={sortBy} 
+              onChange={e => setSortBy(e.target.value)}
+              style={{
+                background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:9999,
+                padding:"6px 12px", fontSize:12, fontWeight:700, color:"#475569", outline:"none", cursor:"pointer"
+              }}
+            >
+              <option value="dateDesc">Date: Newest First</option>
+              <option value="dateAsc">Date: Oldest First</option>
+              <option value="durDesc">Duration: Longest</option>
+              <option value="durAsc">Duration: Shortest</option>
+            </select>
+            <span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>
+              Quota Balance: <strong style={{color:"#16a34a"}}>{Math.max(0, 20 - approvedC)}</strong> / 20
+            </span>
+          </div>
         </div>
 
         {filteredMine.length === 0 ? (
           <div style={{textAlign:"center",padding:"48px 20px",color:"#94a3b8"}}>
             <FileText size={36} style={{margin:"0 auto 10px",color:"#cbd5e1"}}/>
-            <p style={{margin:"0 0 12px",fontSize:14,fontWeight:700,color:"#475569"}}>No applications in this view.</p>
-            <Btn onClick={()=>{setRenewalTarget(null);setView("new");}} style={{fontSize:11,padding:"7px 18px"}}>
-              + Apply Now
-            </Btn>
+            <p style={{margin:"0 0 12px",fontSize:14,fontWeight:700,color:"#475569"}}>No applications match this filter.</p>
           </div>
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {filteredMine.slice().reverse().map(req => {
-              const st = getStatus(req);
-              const validity = checkValidity(req);
-              return (
-                <div
-                  key={req.id}
-                  onClick={()=>{setSelId(req.id);setView("detail");}}
-                  style={{
-                    background:"#f8fafc",
-                    border:"1.5px solid #e2e8f0",
-                    borderRadius:18,
-                    padding:"16px 20px",
-                    cursor:"pointer",
-                    transition:"all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                    display:"flex",
-                    alignItems:"center",
-                    justifyContent:"space-between",
-                    gap:16,
-                  }}
-                  onMouseEnter={e=>{
-                    e.currentTarget.style.background="#ffffff";
-                    e.currentTarget.style.borderColor="#86efac";
-                    e.currentTarget.style.transform="translateY(-2px)";
-                    e.currentTarget.style.boxShadow="0 10px 24px rgba(22, 163, 74, 0.08)";
-                  }}
-                  onMouseLeave={e=>{
-                    e.currentTarget.style.background="#f8fafc";
-                    e.currentTarget.style.borderColor="#e2e8f0";
-                    e.currentTarget.style.transform="translateY(0)";
-                    e.currentTarget.style.boxShadow="none";
-                  }}
-                >
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
-                      <span style={{fontSize:12,fontWeight:900,color:"#16a34a",fontFamily:"monospace"}}>{req.id}</span>
-                      <Badge status={st}/>
-                      <ValidityBadge req={req} compact/>
-                      {req.renewedFrom && (
-                        <span style={{fontSize:10,background:"#ede9fe",color:"#7c3aed",border:"1px solid #ddd6fe",borderRadius:9999,padding:"2px 8px",fontWeight:700}}>
-                          Cloned from #{req.renewedFrom}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      {req.reason}
-                    </div>
-                    <div style={{fontSize:12,color:"#64748b",fontWeight:600}}>
-                      {fmt(req.fromDate)} — {fmt(req.toDate)} · {daysCount(req.fromDate,req.toDate)} day(s)
-                      {req.coApplicants?.length > 0 && ` · +${req.coApplicants.length} co-applicant(s)`}
-                    </div>
-                  </div>
-
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-                    {isApproved(req) && (
-                      <span style={{fontSize:11,fontWeight:800,color:"#16a34a",background:"#dcfce7",border:"1px solid #86efac",borderRadius:9999,padding:"4px 10px"}}>
-                        🪪 Pass Ready
-                      </span>
-                    )}
-                    <span style={{color:"#94a3b8",fontSize:18}}>›</span>
-                  </div>
-                </div>
-              );
-            })}
+            {filteredMine.map(req => renderCard(req))}
           </div>
         )}
       </div>
@@ -854,13 +986,18 @@ function StudentDashboard({user, activeTab, onTabChange}) {
 }
 
 // ── Faculty Dashboard ────────────────────────────────────────────────────────
-function FacultyDashboard({user}) {
+function FacultyDashboard({user, showToast}) {
   const requests = useOD();
   return (
     <FacultyApproval
       user={user}
       requests={requests}
-      onPatch={(id, patch) => patchRequest(id, patch)}
+      onPatch={async (id, patch) => {
+        const res = await patchRequest(id, patch);
+        if (requests.refresh) requests.refresh();
+        return res;
+      }}
+      onShowToast={showToast}
     />
   );
 }
@@ -874,6 +1011,11 @@ export default function App() {
   const [settings,setSettings]=useState(false);
   const [profileOpen,setProfileOpen]=useState(false);
   const [activeTab,setActiveTab]=useState("dashboard");
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = "success", title = "") => {
+    setToast({ message, type, title });
+  };
 
   const handleLogout = () => {
     try { localStorage.removeItem("od_session"); } catch(_) {}
@@ -887,6 +1029,7 @@ export default function App() {
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px}
     input::placeholder,textarea::placeholder{color:#94a3b8}
     button:disabled{opacity:.4;cursor:not-allowed!important}
+    @keyframes toastSlideIn{from{opacity:0;transform:translateY(-20px) scale(0.95)}to{opacity:1;transform:translateY(0) scale(1)}}
   `;
 
   if (!user) {
@@ -923,10 +1066,11 @@ export default function App() {
           onOpenProfile={()=>setProfileOpen(true)}
           onOpenSettings={()=>setSettings(true)}
         >
-          {user.role==="student" && <StudentDashboard user={user} activeTab={activeTab} onTabChange={setActiveTab}/>}
-          {(user.role==="advisor"||user.role==="hod") && <FacultyDashboard user={user}/>}
+          {user.role==="student" && <StudentDashboard user={user} activeTab={activeTab} onTabChange={setActiveTab} showToast={showToast}/>}
+          {(user.role==="advisor"||user.role==="hod") && <FacultyDashboard user={user} showToast={showToast}/>}
         </NavigationShell>
 
+        <ToastNotification toast={toast} onClose={() => setToast(null)} />
       </ClickSpark>
     </div>
   );

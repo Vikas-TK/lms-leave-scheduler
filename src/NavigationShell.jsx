@@ -26,37 +26,22 @@ function buildNotifications(user, requests) {
   if (user.role === "student") {
     const mine = requests.filter(r => r.studentId === user.id);
     mine.forEach(r => {
-      if (r.advisorStatus === "approved" && !r.hodStatus) {
-        notes.push({ id: r.id + "-adv", icon: CheckCircle2, color: "#16a34a", text: `${r.id} approved by Advisor`, sub: "Awaiting HOD approval", time: r.advisorAt });
+      if (r.status === 'in_progress') {
+        notes.push({ id: r.id + "-prog", icon: Clock, color: "#d97706", text: `${r.id} is in progress`, sub: `Currently with: ${r.current_assignee_id}`, time: r.createdAt });
       }
-      if (r.hodStatus === "approved") {
-        notes.push({ id: r.id + "-hod", icon: CheckCircle2, color: "#16a34a", text: `${r.id} fully approved`, sub: "Digital Clearance Pass Ready", time: r.hodAt });
+      if (r.status === 'completed') {
+        notes.push({ id: r.id + "-comp", icon: CheckCircle2, color: "#16a34a", text: `${r.id} fully approved`, sub: "Digital Clearance Pass Ready", time: r.createdAt });
       }
-      if (r.advisorStatus === "rejected") {
-        notes.push({ id: r.id + "-rej", icon: XCircle, color: "#dc2626", text: `${r.id} rejected by Advisor`, sub: r.rejectionReason || "Application rejected", time: r.advisorAt });
-      }
-      if (r.hodStatus === "rejected") {
-        notes.push({ id: r.id + "-hrej", icon: XCircle, color: "#dc2626", text: `${r.id} rejected by HOD`, sub: r.rejectionReason || "Application rejected", time: r.hodAt });
+      if (r.status === 'cancelled') {
+        notes.push({ id: r.id + "-canc", icon: XCircle, color: "#dc2626", text: `${r.id} rejected / cancelled`, sub: r.cancelReason || "Application rejected", time: r.createdAt });
       }
     });
   }
 
-  if (user.role === "advisor") {
-    const pending = requests.filter(r =>
-      r.dept === user.dept && r.year === user.year && r.section === user.section
-      && r.advisorStatus == null
-    );
+  if (user.role === "advisor" || user.role === "hod") {
+    const pending = requests.filter(r => r.current_assignee_id === user.id && r.status === 'in_progress');
     pending.forEach(r => {
-      notes.push({ id: r.id + "-pa", icon: Clock, color: "#d97706", text: `${r.id} awaiting your approval`, sub: r.studentName, time: r.createdAt });
-    });
-  }
-
-  if (user.role === "hod") {
-    const pending = requests.filter(r =>
-      r.dept === user.dept && r.advisorStatus === "approved" && r.hodStatus == null
-    );
-    pending.forEach(r => {
-      notes.push({ id: r.id + "-ph", icon: Clock, color: "#d97706", text: `${r.id} needs HOD seal`, sub: r.studentName, time: r.advisorAt });
+      notes.push({ id: r.id + "-pend", icon: Clock, color: "#d97706", text: `${r.id} awaiting your action`, sub: r.studentName, time: r.createdAt });
     });
   }
 
@@ -67,12 +52,12 @@ function buildNavLinks(role) {
   const base = [
     { id: "dashboard",    icon: LayoutDashboard, label: "Home"         },
     { id: "applications", icon: FileText,         label: "Applications" },
-    { id: "history",      icon: History,          label: "History"      },
   ];
   if (role === "student") {
     base.push({ id: "templates", icon: BookOpen, label: "Templates" });
   }
   if (role === "advisor" || role === "hod") {
+    base.push({ id: "history",      icon: History,          label: "History"      });
     base.push({ id: "approvals", icon: ClipboardList, label: "Approvals" });
   }
   base.push(

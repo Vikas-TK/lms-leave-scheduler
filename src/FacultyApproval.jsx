@@ -1,12 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   CheckCircle2, XCircle, Clock, Users, Search,
   ChevronRight, X, AlertTriangle, FileText,
   Building2, GraduationCap, Shield,
   ArrowUpRight, RotateCcw, Inbox, TrendingUp,
   BookOpen, DoorOpen, Plane, SlidersHorizontal, ChevronDown, Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import { ValidityBadge } from "./validityEngine";
+import { supabase } from "./supabaseClient";
 
 function StudentImg({ photo, name, size = 42, radius = "50%", style }) {
   const [fail, setFail] = useState(false);
@@ -75,20 +77,19 @@ const days = (a,b) => Math.max(1, Math.round((new Date(b)-new Date(a))/86400000)
 const todayStr = () => new Date().toISOString().split("T")[0];
 const cls = r => `${r.dept}${r.year}${r.section}`;
 const getStatus = r => {
-  if (r.hodStatus === "approved") return "approved";
-  if (r.hodStatus === "rejected" || r.advisorStatus === "rejected") return "rejected";
-  if (r.advisorStatus === "approved") return "pending_hod";
-  return "pending_advisor";
+  if (r.status === "completed") return "approved";
+  if (r.status === "cancelled") return "rejected";
+  if (r.status === "draft") return "draft";
+  return "pending";
 };
 
 function SBadge({status, sm}) {
   const cfg = {
-    pending_advisor: { label:"Pending Advisor", color:"#d97706", bg:"#fef3c7", border:"#fde68a", Ic:Clock },
-    pending_hod:     { label:"Pending HOD",     color:"#2563eb", bg:"#dbeafe", border:"#bfdbfe", Ic:ArrowUpRight },
-    approved:        { label:"Approved",        color:"#16a34a", bg:"#dcfce7", border:"#86efac", Ic:CheckCircle2 },
-    rejected:        { label:"Rejected",        color:"#dc2626", bg:"#fee2e2", border:"#fca5a5", Ic:XCircle },
+    pending:         { label:"In Progress",     color:"#d97706", bg:"#fef3c7", border:"#fde68a", Ic:Clock },
+    approved:        { label:"Completed",       color:"#16a34a", bg:"#dcfce7", border:"#86efac", Ic:CheckCircle2 },
+    rejected:        { label:"Cancelled",       color:"#dc2626", bg:"#fee2e2", border:"#fca5a5", Ic:XCircle },
   };
-  const s = cfg[status] || cfg.pending_advisor;
+  const s = cfg[status] || cfg.pending;
   const Ic = s.Ic;
   return (
     <span style={{
@@ -195,21 +196,37 @@ function TStep({label, status, actor, ts, note, last}) {
   );
 }
 
-function Drawer({req, user, isHod, onClose, onApprove, onReject, onMod}) {
+function Drawer({req, user, isHod, facultyUsers, onClose, onOpenApprove, onOpenReject}) {
   const [tab, setTab] = useState("details");
-  const [rejMode, setRejMode] = useState(false);
-  const [rejTxt, setRejTxt] = useState("");
-  const [modMode, setModMode] = useState(false);
-  const [modTxt, setModTxt] = useState("");
-  const [confirming, setConfirming] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (tab === "audit" && req) {
+      setLoadingHistory(true);
+      supabase.from('application_routing_history')
+        .select('*')
+        .eq('applicationId', req.id)
+        .order('createdAt', { ascending: true })
+        .then(({ data }) => {
+          if (data) setHistory(data);
+          setLoadingHistory(false);
+        });
+    }
+  }, [tab, req]);
+
+  const getUserName = (id) => {
+    if (!id) return "";
+    if (id === req.studentId) return req.studentName;
+    const f = (facultyUsers||[]).find(u => u.id === id);
+    return f ? f.name : id;
+  };
 
   if(!req) return null;
   const st = getStatus(req);
   const dur = days(req.fromDate, req.toDate);
 
-  const canAdvisorAct = !isHod && req.advisorStatus == null;
-  const canHodAct = isHod && req.advisorStatus === "approved" && req.hodStatus == null;
-  const canAct = canAdvisorAct || canHodAct;
+  const canAct = req.current_assignee_id === user.id && req.status === 'in_progress';
 
   return (
     <div style={{position:"fixed", inset:0, background:"rgba(15,23,42,0.45)", backdropFilter:"blur(6px)", display:"flex", justifyContent:"flex-end", zIndex:999}}>
@@ -298,22 +315,34 @@ function Drawer({req, user, isHod, onClose, onApprove, onReject, onMod}) {
 
           {tab === "audit" && (
             <div style={{background:"#ffffff", border:"1.5px solid #e2e8f0", borderRadius:18, padding:20}}>
-              <TStep label="Application Submitted" status="approved" actor={`By ${req.studentName}`} ts={fmt(req.createdAt)} />
-              <TStep
-                label="Class Advisor Recommendation"
-                status={req.advisorStatus || (req.advisorStatus===null?"pending":"waiting")}
-                actor={`Advisor (${user.dept})`}
-                ts={fmt(req.advisorAt)}
-                note={req.advisorStatus==="rejected"?req.rejectionReason:null}
-              />
-              <TStep
-                label="Head of Department Seal"
-                status={req.hodStatus || (req.hodStatus===null && req.advisorStatus==="approved"?"pending":"waiting")}
-                actor={`HOD (${user.dept})`}
-                ts={fmt(req.hodAt)}
-                note={req.hodStatus==="rejected"?req.rejectionReason:null}
-                last
-              />
+              {loadingHistory ? (
+                <div style={{color:"#64748b", fontSize:13, textAlign:"center", padding:"20px"}}>Loading history...</div>
+              ) : history.length === 0 ? (
+                <div style={{color:"#64748b", fontSize:13, textAlign:"center", padding:"20px"}}>No routing history found.</div>
+              ) : (
+                history.map((h, i) => {
+                  const isLast = i === history.length - 1;
+                  let label = "Action";
+                  let status = "approved"; 
+                  if (h.actionTaken === 'created' || h.actionTaken === 'created_draft') { label = "Application Drafted"; }
+                  else if (h.actionTaken === 'created_and_forwarded') { label = `Submitted & Forwarded to ${getUserName(h.forwardedToUserId)}`; status="pending"; }
+                  else if (h.actionTaken === 'forwarded') { label = `Forwarded to ${getUserName(h.forwardedToUserId)}`; status = "pending"; }
+                  else if (h.actionTaken === 'completed') { label = "Final Verification Completed"; }
+                  else if (h.actionTaken === 'cancelled') { label = "Application Rejected"; status = "rejected"; }
+
+                  return (
+                    <TStep
+                      key={h.id}
+                      label={label}
+                      status={status}
+                      actor={`By ${getUserName(h.actionByUserId)}`}
+                      ts={new Date(h.createdAt).toLocaleString("en-IN", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"})}
+                      note={h.comments}
+                      last={isLast}
+                    />
+                  );
+                })
+              )}
             </div>
           )}
         </div>
@@ -321,52 +350,28 @@ function Drawer({req, user, isHod, onClose, onApprove, onReject, onMod}) {
         {/* Action Bottom Bar */}
         {canAct && (
           <div style={{padding:"18px 24px", borderTop:"1px solid #f1f5f9", background:"#f8fafc", display:"flex", gap:12}}>
-            {rejMode ? (
-              <div style={{flex:1, display:"flex", flexDirection:"column", gap:10}}>
-                <textarea
-                  placeholder="State rejection reason..."
-                  value={rejTxt}
-                  onChange={e => setRejTxt(e.target.value)}
-                  style={{width:"100%", background:"#fff", border:"1.5px solid #fca5a5", borderRadius:14, padding:12, fontSize:12, outline:"none"}}
-                />
-                <div style={{display:"flex", gap:8}}>
-                  <button
-                    onClick={() => { onReject(req.id, rejTxt); onClose(); }}
-                    style={{flex:1, padding:"10px", borderRadius:9999, background:"#dc2626", color:"#fff", border:"none", fontWeight:800, cursor:"pointer"}}
-                  >
-                    Confirm Rejection
-                  </button>
-                  <button onClick={() => setRejMode(false)} style={{padding:"10px 18px", borderRadius:9999, background:"#fff", border:"1.5px solid #e2e8f0", color:"#64748b", fontWeight:700, cursor:"pointer"}}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={() => { onApprove(req.id); onClose(); }}
-                  style={{
-                    flex:1, padding:"12px 20px", borderRadius:9999,
-                    background:"linear-gradient(135deg, #16a34a, #059669)",
-                    color:"#fff", border:"none", fontSize:13, fontWeight:900, cursor:"pointer",
-                    boxShadow:"0 4px 16px rgba(22, 163, 74, 0.35)",
-                    display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-                  }}
-                >
-                  <CheckCircle2 size={16}/> {isHod ? "Affix HOD Seal & Approve" : "Recommend & Forward to HOD"}
-                </button>
-                <button
-                  onClick={() => setRejMode(true)}
-                  style={{
-                    padding:"12px 20px", borderRadius:9999,
-                    background:"#fee2e2", color:"#dc2626", border:"1.5px solid #fecaca",
-                    fontSize:13, fontWeight:800, cursor:"pointer",
-                  }}
-                >
-                  Reject
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => onOpenApprove(req)}
+              style={{
+                padding:"12px 20px", borderRadius:9999, flex:2,
+                background:"linear-gradient(135deg, #16a34a, #059669)",
+                color:"#fff", border:"none", fontSize:13, fontWeight:900, cursor:"pointer",
+                boxShadow:"0 4px 16px rgba(22, 163, 74, 0.35)",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              }}
+            >
+              <CheckCircle2 size={16}/> Confirm
+            </button>
+            <button
+              onClick={() => onOpenReject(req)}
+              style={{
+                padding:"12px 20px", borderRadius:9999, flex:1,
+                background:"#fee2e2", color:"#dc2626", border:"1.5px solid #fecaca",
+                fontSize:13, fontWeight:800, cursor:"pointer",
+              }}
+            >
+              Reject
+            </button>
           </div>
         )}
       </div>
@@ -375,41 +380,143 @@ function Drawer({req, user, isHod, onClose, onApprove, onReject, onMod}) {
 }
 
 // ── Faculty Main Dashboard ───────────────────────────────────────────────────
-export default function FacultyApproval({ user, requests, onPatch }) {
+export default function FacultyApproval({ user, requests, onPatch, onShowToast }) {
   const isHod = user.role === "hod";
+  const notify = onShowToast || ((msg) => alert(msg));
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selReq, setSelReq] = useState(null);
 
-  const handleApprove = (id) => {
-    if (isHod) {
-      onPatch(id, { hodStatus: "approved", hodAt: todayStr() });
+  const [approveModalReq, setApproveModalReq] = useState(null);
+  const [rejectModalReq, setRejectModalReq] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [forwardSelection, setForwardSelection] = useState("");
+  const [confirmActionTab, setConfirmActionTab] = useState("forward");
+
+  const [facultyUsers, setFacultyUsers] = useState([]);
+  useEffect(() => {
+    supabase.from('users').select('id, name, role, dept, year, section').in('role', ['advisor', 'hod']).then(({data}) => {
+      if (data) setFacultyUsers(data);
+    });
+  }, []);
+
+  const handleOpenApproveModal = (req) => {
+    const deptHod = facultyUsers.find(u => u.role === 'hod' && u.dept === (req.dept || user.dept));
+    if (deptHod) {
+      setForwardSelection(deptHod.id);
     } else {
-      onPatch(id, { advisorStatus: "approved", advisorAt: todayStr() });
+      const anyHod = facultyUsers.find(u => u.role === 'hod');
+      setForwardSelection(anyHod ? anyHod.id : `HOD${req.dept || user.dept}`);
+    }
+    setConfirmActionTab(isHod ? "final" : "forward");
+    setApproveModalReq(req);
+  };
+
+  const handleOpenRejectModal = (req) => {
+    setRejectModalReq(req);
+    setCancelReason("");
+  };
+
+  const submitApprove = async () => {
+    if (!approveModalReq) return;
+    const req = typeof approveModalReq === 'object' ? approveModalReq : requests.find(r => r.id === approveModalReq) || { id: approveModalReq };
+    const reqId = req.id;
+
+    let patch = {};
+    let successMsg = "";
+
+    if (confirmActionTab === "final" || (isHod && confirmActionTab !== "forward")) {
+      patch = {
+        status: "completed",
+        current_assignee_id: null,
+      };
+      successMsg = `Application #${reqId} has been officially verified & approved!`;
+    } else {
+      const targetUser = facultyUsers.find(u => u.id === forwardSelection);
+      const targetName = targetUser ? `${targetUser.role === 'hod' ? 'HOD ' : ''}${targetUser.name} (${targetUser.id})` : forwardSelection;
+      patch = {
+        status: "in_progress",
+        current_assignee_id: forwardSelection,
+      };
+      successMsg = `Application #${reqId} confirmed and forwarded to ${targetName}!`;
+    }
+
+    const res = await onPatch(reqId, patch);
+
+    if (res && res.success) {
+      await supabase.from('application_routing_history').insert([{
+        applicationId: reqId,
+        actionByUserId: user.id,
+        forwardedToUserId: confirmActionTab === "final" ? null : forwardSelection,
+        actionTaken: confirmActionTab === "final" ? 'completed' : 'forwarded'
+      }]);
+    }
+
+    setApproveModalReq(null);
+    setSelReq(null);
+
+    if (res && res.success === false) {
+      notify(`Failed to update application: ${res.error?.message || 'Database error'}`, 'error');
+    } else {
+      notify(successMsg, 'success');
     }
   };
 
-  const handleReject = (id, reason) => {
-    if (isHod) {
-      onPatch(id, { hodStatus: "rejected", hodAt: todayStr(), rejectionReason: reason });
+  const submitReject = async () => {
+    if (!rejectModalReq) return;
+    if (!cancelReason.trim()) {
+      alert("A reason for cancellation / rejection is mandatory.");
+      return;
+    }
+    const req = typeof rejectModalReq === 'object' ? rejectModalReq : requests.find(r => r.id === rejectModalReq) || { id: rejectModalReq };
+    const reqId = req.id;
+    const reasonSummary = cancelReason.trim();
+
+    const patch = {
+      status: 'cancelled',
+      current_assignee_id: null,
+      cancelReason: reasonSummary,
+    };
+
+    const res = await onPatch(reqId, patch);
+
+    if (res && res.success) {
+      await supabase.from('application_routing_history').insert([{
+        applicationId: reqId,
+        actionByUserId: user.id,
+        actionTaken: 'cancelled',
+        comments: reasonSummary
+      }]);
+    }
+
+    setRejectModalReq(null);
+    setCancelReason("");
+    setSelReq(null);
+
+    if (res && res.success === false) {
+      notify(`Failed to reject application: ${res.error?.message || 'Database error'}`, 'error');
     } else {
-      onPatch(id, { advisorStatus: "rejected", advisorAt: todayStr(), rejectionReason: reason });
+      notify(`Application #${reqId} has been cancelled. Reason recorded: "${reasonSummary}"`, 'error');
     }
   };
 
   const relevant = useMemo(() => {
-    if (isHod) {
-      return requests.filter(r => r.dept === user.dept);
-    }
-    // Show all requests for the advisor's department so CS3D submissions (714024104189-252)
-    // are visible even if the advisor tests with a different section (e.g. ADVCS1A).
-    // Strict class match would be: r.dept===user.dept && r.year===user.year && r.section===user.section
-    return requests.filter(r => r.dept === user.dept);
+    return requests.filter(r => {
+      if (r.status === 'draft') return false;
+      if (r.current_assignee_id === user.id) return true;
+      if (isHod && r.dept === user.dept) return true;
+      if (!isHod && r.dept === user.dept && r.year === user.year && (r.section || '').toUpperCase() === (user.section || '').toUpperCase()) return true;
+      return false;
+    });
   }, [requests, user, isHod]);
 
-  const pending = relevant.filter(r => isHod ? (r.advisorStatus==="approved" && r.hodStatus==null) : r.advisorStatus==null);
-  const approved = relevant.filter(r => r.hodStatus === "approved");
-  const rejected = relevant.filter(r => r.hodStatus === "rejected" || r.advisorStatus === "rejected");
+  const isPendingAction = (r) => {
+    return r.current_assignee_id === user.id && r.status === 'in_progress';
+  };
+
+  const pending = relevant.filter(isPendingAction);
+  const approved = relevant.filter(r => r.status === "completed");
+  const rejected = relevant.filter(r => r.status === "cancelled");
 
   const filtered = useMemo(() => {
     return relevant.filter(r => {
@@ -417,15 +524,201 @@ export default function FacultyApproval({ user, requests, onPatch }) {
                           (r.rollNo || "").includes(search) ||
                           (r.reason || "").toLowerCase().includes(search.toLowerCase());
       if (!matchSearch) return false;
-      if (filter === "pending") return isHod ? (r.advisorStatus==="approved" && r.hodStatus==null) : r.advisorStatus==null;
-      if (filter === "approved") return r.hodStatus === "approved";
-      if (filter === "rejected") return r.hodStatus === "rejected" || r.advisorStatus === "rejected";
+      if (filter === "pending") return isPendingAction(r);
+      if (filter === "approved") return r.status === "completed";
+      if (filter === "rejected") return r.status === "cancelled";
       return true;
     });
-  }, [relevant, search, filter, isHod]);
+  }, [relevant, search, filter, isPendingAction]);
 
   return (
     <div style={{maxWidth:1080, margin:"0 auto", display:"flex", flexDirection:"column", gap:22}}>
+      {/* ── Modals ───────────────────────────────────────────────────────────── */}
+      {approveModalReq && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.45)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}>
+          <div style={{background:"#ffffff",borderRadius:24,padding:26,width:"100%",maxWidth:500,boxShadow:"0 25px 60px rgba(15,23,42,0.18)",border:"1.5px solid #e2e8f0",display:"flex",flexDirection:"column",gap:16}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid #f1f5f9",paddingBottom:14}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:16,fontWeight:900,color:"#0f172a",fontFamily:"monospace"}}>{approveModalReq.id}</span>
+                  <span style={{background:"#dcfce7",color:"#16a34a",fontSize:11,fontWeight:800,padding:"2px 8px",borderRadius:9999}}>
+                    {approveModalReq.studentName} ({cls(approveModalReq)})
+                  </span>
+                </div>
+                <h3 style={{margin:0,color:"#0f172a",fontSize:18,fontWeight:900}}>
+                  Application Confirmation
+                </h3>
+              </div>
+              <button
+                onClick={()=>setApproveModalReq(null)}
+                style={{background:"#f1f5f9",border:"none",borderRadius:12,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#64748b"}}
+              >
+                <X size={16}/>
+              </button>
+            </div>
+
+            {/* Selection Tabs: Forward vs Complete Final Verification */}
+            <div style={{display:"flex",background:"#f1f5f9",borderRadius:14,padding:4,gap:4}}>
+              <button
+                type="button"
+                onClick={() => setConfirmActionTab("forward")}
+                style={{
+                  flex:1,padding:"10px 14px",borderRadius:10,border:"none",
+                  background: confirmActionTab === "forward" ? "#ffffff" : "transparent",
+                  color: confirmActionTab === "forward" ? "#16a34a" : "#64748b",
+                  fontSize:13, fontWeight:800, cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                  boxShadow: confirmActionTab === "forward" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+                  transition:"all 0.18s ease"
+                }}
+              >
+                <ArrowUpRight size={15}/> Forward
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmActionTab("final")}
+                style={{
+                  flex:1,padding:"10px 14px",borderRadius:10,border:"none",
+                  background: confirmActionTab === "final" ? "#ffffff" : "transparent",
+                  color: confirmActionTab === "final" ? "#16a34a" : "#64748b",
+                  fontSize:13, fontWeight:800, cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                  boxShadow: confirmActionTab === "final" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+                  transition:"all 0.18s ease"
+                }}
+              >
+                <ShieldCheck size={15}/> Complete Final Verification
+              </button>
+            </div>
+
+            {/* Tab 1 Content: Forward */}
+            {confirmActionTab === "forward" && (
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                <div style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:16,padding:"12px 14px"}}>
+                  <div style={{fontSize:12,fontWeight:800,color:"#166534",marginBottom:2}}>
+                    Forward to Higher Authority / Faculty
+                  </div>
+                  <div style={{fontSize:11,color:"#15803d",lineHeight:1.4}}>
+                    Choose the Head of Department or another faculty member to forward this application for subsequent review.
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{display:"block",fontSize:12,fontWeight:800,color:"#475569",marginBottom:6}}>
+                    Select Recipient:
+                  </label>
+                  <select
+                    value={forwardSelection}
+                    onChange={e => setForwardSelection(e.target.value)}
+                    style={{width:"100%",padding:"11px 14px",borderRadius:12,border:"1.5px solid #cbd5e1",background:"#f8fafc",fontSize:13,fontWeight:700,color:"#0f172a",outline:"none",cursor:"pointer"}}
+                  >
+                    <optgroup label="Head of Department (Recommended)">
+                      {facultyUsers.filter(u=>u.role==='hod').map(u => (
+                        <option key={u.id} value={u.id}>HOD — {DEPTS[u.dept]||u.dept} ({u.name})</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Other Faculty / Class Advisors">
+                      {facultyUsers.filter(u=>u.role==='advisor' && u.id !== user.id).map(u => (
+                        <option key={u.id} value={u.id}>{u.dept}{u.year}{u.section} — {u.name}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div style={{display:"flex",gap:10,marginTop:6}}>
+                  <button
+                    onClick={submitApprove}
+                    style={{flex:1,padding:"12px 18px",borderRadius:9999,background:"linear-gradient(135deg, #16a34a, #059669)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:"0 4px 14px rgba(22, 163, 74, 0.3)"}}
+                  >
+                    <ArrowUpRight size={15}/> Confirm & Forward
+                  </button>
+                  <button
+                    onClick={()=>setApproveModalReq(null)}
+                    style={{padding:"12px 20px",borderRadius:9999,background:"#f1f5f9",color:"#64748b",border:"none",fontWeight:800,fontSize:13,cursor:"pointer"}}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2 Content: Complete Final Verification */}
+            {confirmActionTab === "final" && (
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                <div style={{background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:16,padding:"12px 14px"}}>
+                  <div style={{fontSize:12,fontWeight:800,color:"#1e40af",marginBottom:2}}>
+                    Grant Immediate Final Clearance
+                  </div>
+                  <div style={{fontSize:11,color:"#1d4ed8",lineHeight:1.4}}>
+                    Digitally sign, seal, and grant final approval for this requisition directly without routing.
+                  </div>
+                </div>
+
+                <div style={{background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:16,padding:"12px 14px",display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:12,background:"#dcfce7",border:"1.5px solid #86efac",display:"flex",alignItems:"center",justifyContent:"center",color:"#16a34a",flexShrink:0}}>
+                    <CheckCircle2 size={18}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase"}}>Authorized Signatory</div>
+                    <div style={{fontSize:13,fontWeight:900,color:"#0f172a"}}>{user.name}</div>
+                    <div style={{fontSize:11,color:"#16a34a",fontWeight:700}}>{isHod ? `Head of Department · ${DEPTS[user.dept]||user.dept}` : `Class Advisor · ${user.dept}${user.year}${user.section}`}</div>
+                  </div>
+                </div>
+
+                <div style={{display:"flex",gap:10,marginTop:6}}>
+                  <button
+                    onClick={submitApprove}
+                    style={{flex:1,padding:"12px 18px",borderRadius:9999,background:"linear-gradient(135deg, #16a34a, #059669)",color:"#fff",border:"none",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:"0 4px 14px rgba(22, 163, 74, 0.3)"}}
+                  >
+                    <CheckCircle2 size={15}/> Complete Final Verification
+                  </button>
+                  <button
+                    onClick={()=>setApproveModalReq(null)}
+                    style={{padding:"12px 20px",borderRadius:9999,background:"#f1f5f9",color:"#64748b",border:"none",fontWeight:800,fontSize:13,cursor:"pointer"}}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {rejectModalReq && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.4)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>
+          <div style={{background:"#ffffff",borderRadius:24,padding:28,width:"100%",maxWidth:480,boxShadow:"0 25px 60px rgba(15,23,42,0.15)",border:"1px solid #e2e8f0"}}>
+            <h3 style={{color:"#dc2626",fontSize:20,fontWeight:900,marginBottom:8}}>Cancel / Reject Application</h3>
+            <p style={{color:"#64748b",fontSize:13,marginBottom:20}}>You must provide a reason for cancelling this request. The student will see this reason.</p>
+            
+            <label style={{display:"block",fontSize:12,fontWeight:800,color:"#475569",marginBottom:8}}>Reason for Cancellation:</label>
+            <textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="E.g., Insufficient attendance, clash with internal exams..."
+              rows={4}
+              style={{width:"100%",padding:"12px 16px",borderRadius:12,border:"1.5px solid #fecaca",background:"#fef2f2",fontSize:14,color:"#991b1b",outline:"none",marginBottom:24,resize:"none"}}
+            />
+
+            <div style={{display:"flex",gap:12}}>
+              <button
+                onClick={submitReject}
+                style={{flex:1,padding:"12px",borderRadius:9999,background:"#dc2626",color:"#fff",border:"none",fontWeight:800,fontSize:14,cursor:"pointer"}}
+              >
+                Confirm Rejection
+              </button>
+              <button
+                onClick={()=>{setRejectModalReq(null);setCancelReason("");}}
+                style={{padding:"12px 24px",borderRadius:9999,background:"#f1f5f9",color:"#64748b",border:"none",fontWeight:800,fontSize:14,cursor:"pointer"}}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Top Header Title Row ─────────────────────────────────── */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
         <div>
@@ -512,8 +805,7 @@ export default function FacultyApproval({ user, requests, onPatch }) {
           <div style={{display:"flex", flexDirection:"column", gap:12}}>
             {filtered.map(req => {
               const st = getStatus(req);
-              const needsAction = isHod ? (req.advisorStatus==="approved" && req.hodStatus==null) : req.advisorStatus==null;
-
+              const needsAction = isPendingAction(req);
               return (
                 <div
                   key={req.id}
@@ -554,11 +846,37 @@ export default function FacultyApproval({ user, requests, onPatch }) {
                     </div>
                   </div>
 
-                  <div style={{display:"flex", alignItems:"center", gap:10, flexShrink:0}}>
+                  <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
                     {needsAction && (
-                      <span style={{background:"#16a34a", color:"#fff", fontSize:11, fontWeight:800, padding:"6px 14px", borderRadius:9999}}>
-                        Action Required
-                      </span>
+                      <div style={{display:"flex", alignItems:"center", gap:6}}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenApproveModal(req);
+                          }}
+                          style={{
+                            background: "#16a34a", color: "#fff", border: "none",
+                            padding: "6px 14px", borderRadius: 9999, fontSize: 11, fontWeight: 800,
+                            cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                            boxShadow: "0 2px 8px rgba(22,163,74,0.25)"
+                          }}
+                        >
+                          <CheckCircle2 size={13}/> Confirm
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenRejectModal(req);
+                          }}
+                          style={{
+                            background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
+                            padding: "6px 12px", borderRadius: 9999, fontSize: 11, fontWeight: 800,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
                     )}
                     <ChevronRight size={18} color="#94a3b8" />
                   </div>
@@ -575,9 +893,10 @@ export default function FacultyApproval({ user, requests, onPatch }) {
           req={selReq}
           user={user}
           isHod={isHod}
+          facultyUsers={facultyUsers}
           onClose={() => setSelReq(null)}
-          onApprove={handleApprove}
-          onReject={handleReject}
+          onOpenApprove={handleOpenApproveModal}
+          onOpenReject={handleOpenRejectModal}
         />
       )}
     </div>

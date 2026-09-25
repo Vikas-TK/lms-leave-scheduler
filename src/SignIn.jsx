@@ -3,8 +3,7 @@ import {
   User, Lock, Eye, EyeOff, LogIn,
   Home, Sun, GraduationCap, Building2, AlertCircle, ChevronRight, Sparkles, Info,
 } from "lucide-react";
-import { STUDENTS } from "./data/students";
-
+import { supabase } from "./supabaseClient";
 const ROLES = [
   {
     key: "hosteller", label: "Hosteller", icon: Home,
@@ -36,30 +35,7 @@ const ROLES = [
   },
 ];
 
-const DEPT_KEYS = ["CS","IT","AIDS","AIML","CY","MECH","CIVIL","BME","EEE","ECE"];
-const YEARS = [1,2,3,4];
-const SECTIONS = ["A","B","C"];
 
-const buildUserMap = () => {
-  const u = {};
-  Object.values(STUDENTS).forEach(s => {
-    u[s.regNo] = {
-      pass: s.pass, role: "student",
-      name: s.name, dept: s.dept, year: s.year, section: s.section,
-      rollNo: s.rollNo, regNo: s.regNo, photo: s.photo,
-    };
-  });
-  DEPT_KEYS.forEach(dept => {
-    YEARS.forEach(yr => {
-      SECTIONS.forEach(sec => {
-        u["ADV"+dept+yr+sec] = { pass:"advisor123", role:"advisor", dept, year:yr, section:sec };
-      });
-    });
-    u["HOD"+dept] = { pass:"hod123", role:"hod", dept };
-  });
-  return u;
-};
-const USER_MAP = buildUserMap();
 
 const SIGNIN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -145,28 +121,40 @@ export default function SignIn({ onLogin }) {
     setActiveRole(key); setError(""); setUserId(""); setPassword("");
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError("");
     if (!userId.trim() || !password.trim()) {
       setError("Please enter both User ID and Password."); triggerShake(); return;
     }
     setLoading(true);
-    setTimeout(() => {
-      const uid = userId.trim().toUpperCase();
-      const user = USER_MAP[uid];
-      if (!user) {
+    
+    const uid = userId.trim().toUpperCase();
+
+    try {
+      const { data: user, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', uid)
+        .single();
+
+      if (fetchError || !user) {
         setError("ID not found. Check format: " + role.formatExample);
         setLoading(false); triggerShake(); return;
       }
-      if (user.pass !== password) {
+      
+      if (user.password !== password) {
         setError("Incorrect password. Use the demo credentials below.");
         setLoading(false); triggerShake(); return;
       }
+      
       const session = { ...user, id: uid, loginRole: activeRole };
       try { localStorage.setItem("od_session", JSON.stringify(session)); } catch(e) {}
       setLoading(false);
       onLogin(session);
-    }, 600);
+    } catch (err) {
+      setError("Network error. Please try again.");
+      setLoading(false); triggerShake();
+    }
   };
 
   const handleKeyDown = e => { if (e.key === "Enter") handleLogin(); };

@@ -4,6 +4,7 @@ import {
   XCircle, Home, Sun, GraduationCap, Building2, BarChart3,
   Layers, ClipboardList, BadgeCheck, Shield, Sparkles,
 } from "lucide-react";
+import { seedAttendance } from "./utils/attendance";
 
 const DEPTS = {
   CS:"Computer Science", IT:"Information Technology",
@@ -24,10 +25,7 @@ const HOD_NAMES = {
   CIVIL:"Prof. Ravi Sharma", BME:"Prof. Uma Devi", EEE:"Prof. Ganesh Rao", ECE:"Prof. Priya S",
 };
 
-function seedAttendance(rollNo, dept) {
-  const n = (parseInt(rollNo || "1", 10) + dept.charCodeAt(0)) % 20;
-  return 78 + n; // 78%–97%
-}
+
 
 const OD_QUOTA = 20;
 
@@ -79,9 +77,9 @@ export default function ProfileModal({ user, requests, onClose }) {
 
   // Student metrics
   const mine = requests.filter(r => r.studentId === user.id);
-  const approved = mine.filter(r => r.hodStatus === "approved");
-  const pending = mine.filter(r => !r.hodStatus && !r.advisorStatus);
-  const rejected = mine.filter(r => r.hodStatus === "rejected" || r.advisorStatus === "rejected");
+  const approved = mine.filter(r => r.status === "completed");
+  const pending = mine.filter(r => r.status === "in_progress");
+  const rejected = mine.filter(r => r.status === "cancelled");
   const odUsed = approved.length;
   const odRemain = Math.max(0, OD_QUOTA - odUsed);
   const attendance = seedAttendance(user.rollNo, user.dept);
@@ -90,13 +88,13 @@ export default function ProfileModal({ user, requests, onClose }) {
   const advisorName = ADV_NAMES[advisorIdx];
 
   // Faculty metrics
-  const pendingForMe = isHOD
-    ? requests.filter(r => r.dept === user.dept && r.advisorStatus === "approved" && r.hodStatus == null)
-    : requests.filter(r => r.dept === user.dept && r.year === user.year && r.section === user.section && r.advisorStatus == null);
+  const pendingForMe = requests.filter(r => r.current_assignee_id === user.id && r.status === 'in_progress');
 
-  const approvedByMe = isHOD
-    ? requests.filter(r => r.dept === user.dept && r.hodStatus === "approved")
-    : requests.filter(r => r.dept === user.dept && r.year === user.year && r.section === user.section && r.advisorStatus === "approved");
+  const approvedByMe = requests.filter(r => {
+    if (r.status !== 'completed') return false;
+    if (isHOD) return r.dept === user.dept;
+    return r.dept === user.dept && r.year === user.year && (r.section || '').toUpperCase() === (user.section || '').toUpperCase();
+  });
 
   return (
     <div
