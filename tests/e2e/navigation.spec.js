@@ -68,9 +68,9 @@ test.describe('Navigation Shell & UI', () => {
   });
 
   test('should have a notification bell button', async ({ page }) => {
-    // The bell icon button should be in the header
-    const bellButtons = page.locator('header button');
-    await expect(bellButtons.first()).toBeVisible();
+    // The bell icon button in header
+    const bellBtn = page.locator('.ns-header-btn').first();
+    await expect(bellBtn).toBeVisible();
   });
 
   test('should have a logout button in the sidebar', async ({ page }) => {
